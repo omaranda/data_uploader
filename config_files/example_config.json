@@ -1,0 +1,10 @@
+{
+    "local_directory": "/path/to/project-data",
+    "bucket_name": "your-bucket-name",
+    "s3_prefix": "C1",
+    "max_workers": 15,
+    "aws_region": "eu-west-1",
+    "times_to_retry": 3,
+    "aws_profile": "default",
+    "use_find": "yes"
+}

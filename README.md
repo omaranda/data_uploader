@@ -138,7 +138,6 @@ Uses ThreadPoolExecutor with configurable workers (default: 15) for fast paralle
 When adding new features:
 1. Update relevant modules in `src/data_uploader/`
 2. Update documentation in `doc/`
-3. Update CLAUDE.md if architecture changes
 
 ## License
 

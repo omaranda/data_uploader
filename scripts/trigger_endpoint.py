@@ -23,22 +23,6 @@ from data_uploader.progress import print_status, print_header
 load_dotenv()
 
 
-def load_job_config(config_path: str) -> dict:
-    """Load job configuration from JSON file.
-
-    Args:
-        config_path: Path to job config JSON file
-
-    Returns:
-        Job configuration dictionary
-    """
-    if not os.path.exists(config_path):
-        return {}
-
-    with open(config_path, 'r') as f:
-        return json.load(f)
-
-
 def get_uploaded_s3_paths(db: Database, session_id: int) -> list:
     """Get list of successfully uploaded S3 paths for a session.
 
@@ -71,24 +55,32 @@ def get_uploaded_s3_paths(db: Database, session_id: int) -> list:
 @click.option('--session-id', '-s', required=True, type=int,
               help='Session ID to trigger processing for')
 @click.option('--endpoint-url', '-e', type=str,
-              help='Endpoint URL to call (overrides env and job config)')
-@click.option('--job-config', '-j', type=click.Path(exists=True),
-              help='Path to job configuration JSON file')
+              help='Endpoint URL to call (overrides MADXXX_API_URL env var)')
 @click.option('--api-key', '-k', type=str,
-              help='API key for authentication (overrides env and job config)')
-@click.option('--timeout', '-t', type=int, default=30,
-              help='Request timeout in seconds')
-@click.option('--batch-size', type=int,
-              help='Override batch size from job config')
+              help='API key for authentication (overrides MADXXX_API_KEY env var)')
+@click.option('--timeout', '-t', type=int,
+              help='Request timeout in seconds (overrides MADXXX_API_TIMEOUT env var)')
 @click.option('--list-files', is_flag=True,
               help='Include specific file list in payload (otherwise sends prefix only)')
 @click.option('--job-name', type=str,
               help='Custom job name')
-def main(session_id, endpoint_url, job_config, api_key, timeout, batch_size, list_files, job_name):
+@click.option('--function-name', type=str,
+              help='Backend function name (overrides MADXXX_FUNCTION_NAME env var)')
+@click.option('--module-name', type=str,
+              help='Backend module path (overrides MADXXX_MODULE_NAME env var)')
+@click.option('--sqs-queue', type=str,
+              help='SQS queue name (overrides MADXXX_SQS_QUEUE env var)')
+@click.option('--sqs-region', type=str,
+              help='SQS region (overrides MADXXX_SQS_REGION env var)')
+def main(session_id, endpoint_url, api_key, timeout, list_files, job_name,
+         function_name, module_name, sqs_queue, sqs_region):
     """Trigger endpoint to register uploaded files for processing.
 
     This script sends a job registration request to the MadXXX API endpoint
     with the correct payload format expected by the backend.
+
+    Configuration is read from environment variables (.env file) with optional
+    CLI overrides. All required values must be set in .env or passed via CLI.
     """
 
     # Load config for database connection
@@ -105,34 +97,28 @@ def main(session_id, endpoint_url, job_config, api_key, timeout, batch_size, lis
             click.echo(f"❌ Session not found: {session_id}", err=True)
             sys.exit(1)
 
-        # Load job configuration if provided
-        job_cfg = {}
-        if job_config:
-            job_cfg = load_job_config(job_config)
-            print_status("📋", f"Loaded job config: {job_config}")
-
-        # Determine API key (priority: CLI > env > job_config)
-        final_api_key = (
-            api_key or
-            os.getenv('MADXXX_API_KEY') or
-            job_cfg.get('api_keys', {}).get('madxxx_api_key')
-        )
+        # Determine API key (priority: CLI > env)
+        final_api_key = api_key or os.getenv('MADXXX_API_KEY')
 
         if not final_api_key:
-            click.echo("❌ No API key provided. Use --api-key, MADXXX_API_KEY env var, or job config", err=True)
+            click.echo("❌ No API key provided. Set MADXXX_API_KEY in .env or use --api-key", err=True)
             sys.exit(1)
 
-        # Determine endpoint URL (priority: CLI > env > job_config)
-        # No hardcoded default for security - must be in .env or config
-        final_endpoint_url = (
-            endpoint_url or
-            os.getenv('MADXXX_API_URL') or
-            job_cfg.get('endpoints', {}).get('default')
-        )
+        # Determine endpoint URL (priority: CLI > env)
+        final_endpoint_url = endpoint_url or os.getenv('MADXXX_API_URL')
 
         if not final_endpoint_url:
-            click.echo("❌ No endpoint URL provided. Set MADXXX_API_URL in .env, use --endpoint-url, or configure in job_config.json", err=True)
+            click.echo("❌ No endpoint URL provided. Set MADXXX_API_URL in .env or use --endpoint-url", err=True)
             sys.exit(1)
+
+        # Determine timeout (priority: CLI > env > default)
+        final_timeout = timeout or int(os.getenv('MADXXX_API_TIMEOUT', '30'))
+
+        # Determine job settings (priority: CLI > env > defaults)
+        final_function_name = function_name or os.getenv('MADXXX_FUNCTION_NAME', 'register_audiofiles')
+        final_module_name = module_name or os.getenv('MADXXX_MODULE_NAME', 'madxxx_workbench.audio.register_audio')
+        final_sqs_queue = sqs_queue or os.getenv('MADXXX_SQS_QUEUE', 'madXXX_tasks_data_registration')
+        final_sqs_region = sqs_region or os.getenv('MADXXX_SQS_REGION', 'eu-west-1')
 
         print_header("📡 TRIGGER MADXXX ENDPOINT")
         print_status("📋", f"Session ID: {session_id}")
@@ -143,16 +129,6 @@ def main(session_id, endpoint_url, job_config, api_key, timeout, batch_size, lis
 
         # Initialize notifier
         notifier = EndpointNotifier(api_key=final_api_key, api_endpoint=final_endpoint_url)
-
-        # Get job template settings from config
-        template = {}
-        if job_cfg and 'job_templates' in job_cfg:
-            template = job_cfg['job_templates'].get('audio_processing', {})
-
-        function_name = template.get('function_name', 'register_audiofiles')
-        module_name = template.get('module_name', 'madxxx_workbench.audio.register_audio')
-        sqs_queue = template.get('sqs_queue', 'madXXX_tasks_data_registration')
-        sqs_region = template.get('sqs_region', 'eu-west-1')
 
         # Build S3 paths
         if list_files:
@@ -178,16 +154,16 @@ def main(session_id, endpoint_url, job_config, api_key, timeout, batch_size, lis
             print_status("ℹ️", "Sending prefix path (API will list files)")
 
         # Prepare custom job name
-        final_job_name = job_name or f"session_{session_id}_{function_name}"
+        final_job_name = job_name or f"session_{session_id}_{final_function_name}"
 
         # Build payload
         payload = notifier.build_job_payload(
             s3_paths=s3_paths,
             job_name=final_job_name,
-            function_name=function_name,
-            module_name=module_name,
-            sqs_queue=sqs_queue,
-            sqs_region=sqs_region,
+            function_name=final_function_name,
+            module_name=final_module_name,
+            sqs_queue=final_sqs_queue,
+            sqs_region=final_sqs_region,
             custom_keywords={}
         )
 
@@ -197,7 +173,7 @@ def main(session_id, endpoint_url, job_config, api_key, timeout, batch_size, lis
         print_status("📤", "Sending request to MadXXX API...")
         print_status("🔑", "Using API key authentication")
         print_status("📦", f"Job name: {final_job_name}")
-        print_status("📦", f"Function: {function_name}")
+        print_status("📦", f"Function: {final_function_name}")
         print_status("📦", f"Files/paths: {len(s3_paths):,}")
 
         # Show payload summary (not full file list for large batches)
@@ -213,7 +189,7 @@ def main(session_id, endpoint_url, job_config, api_key, timeout, batch_size, lis
         response = requests.post(
             final_endpoint_url,
             json=payload,
-            timeout=timeout,
+            timeout=final_timeout,
             headers=headers
         )
 
@@ -248,7 +224,7 @@ def main(session_id, endpoint_url, job_config, api_key, timeout, batch_size, lis
             sys.exit(1)
 
     except requests.exceptions.Timeout:
-        click.echo(f"❌ Request timeout after {timeout}s", err=True)
+        click.echo(f"❌ Request timeout after {final_timeout}s", err=True)
         sys.exit(1)
 
     except requests.exceptions.RequestException as e:

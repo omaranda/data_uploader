@@ -1,47 +1,45 @@
 # Endpoint Integration Guide
 
-This guide explains how to use the `trigger_endpoint.py` script to integrate with external APIs for downstream processing.
+This guide explains how to use the `trigger_endpoint.py` script to integrate with the MadXXX API for downstream processing.
 
 ## Overview
 
-After uploading files to S3, you can trigger an external endpoint to register the files for processing. The script supports:
+After uploading files to S3, you can trigger the MadXXX API endpoint to register the files for processing. The script supports:
 
-- Bearer token authentication
 - API key authentication
-- Job configuration files
 - Environment variable configuration
-- CLI overrides
+- CLI overrides for all settings
+- Two modes: prefix-only or complete file list
 
 ## Security: API Key Management
 
-**IMPORTANT:** API keys should NEVER be stored in config files or committed to git. Always use environment variables.
+**IMPORTANT:** API keys and endpoint URLs should NEVER be hardcoded or committed to git. Always use environment variables.
 
 ### Setup
 
-1. **Add API key to .env file** (this file is gitignored):
-   ```bash
-   # Edit .env
-   MADXXX_API_KEY=your-api-key-here
-   MADXXX_API_URL=https://your-api-endpoint.com/api/register
-   ```
+**Add all configuration to .env file** (this file is gitignored):
 
-2. **Job configuration** should NOT contain the API key:
-   ```json
-   {
-     "api_keys": {
-       "auth_type": "bearer"
-     },
-     "endpoints": {
-       "default": "https://your-api-endpoint.com/api/register"
-     }
-   }
-   ```
+```bash
+# Edit .env
+# Required: API credentials
+MADXXX_API_KEY=your-api-key-here
+MADXXX_API_URL=https://your-api-endpoint.com/api/v1/madxxx_tasks/job
+
+# Optional: API timeout
+MADXXX_API_TIMEOUT=30
+
+# Optional: Job configuration (has defaults)
+MADXXX_FUNCTION_NAME=register_audiofiles
+MADXXX_MODULE_NAME=madxxx_workbench.audio.register_audio
+MADXXX_SQS_QUEUE=madXXX_tasks_data_registration
+MADXXX_SQS_REGION=eu-west-1
+```
 
 ## Usage
 
 ### Basic Usage
 
-Trigger endpoint using environment variables:
+Trigger endpoint using environment variables from .env:
 
 ```bash
 python scripts/trigger_endpoint.py --session-id 42
@@ -50,24 +48,16 @@ python scripts/trigger_endpoint.py --session-id 42
 This will:
 - Read API key from `MADXXX_API_KEY` env variable
 - Read endpoint URL from `MADXXX_API_URL` env variable
-- Use Bearer token authentication (default)
-- Send session information to the endpoint
+- Read job settings from `MADXXX_*` env variables (or use defaults)
+- Send prefix-only mode (API lists files)
 
-### Using Job Configuration
+### File List Mode
 
-Use a job configuration file for additional parameters:
+Send complete list of uploaded files instead of just prefix:
 
 ```bash
-python scripts/trigger_endpoint.py \
-  --session-id 42 \
-  --job-config config_files/job_config.json
+python scripts/trigger_endpoint.py --session-id 42 --list-files
 ```
-
-The job config can include:
-- Endpoint URL
-- Authentication type
-- Job templates (function names, SQS queues, etc.)
-- Default settings (batch size, file extensions, etc.)
 
 ### Override Endpoint URL
 
@@ -89,109 +79,78 @@ python scripts/trigger_endpoint.py \
   --api-key "your-temporary-key"
 ```
 
-### Different Authentication Types
+### Override Job Settings
 
-Use API Key header authentication instead of Bearer token:
+Override any job configuration via CLI:
 
 ```bash
 python scripts/trigger_endpoint.py \
   --session-id 42 \
-  --auth-type apikey
+  --function-name register_videofiles \
+  --module-name madxxx_workbench.video.register_video \
+  --sqs-queue video_processing_queue \
+  --sqs-region us-east-1
 ```
 
-No authentication:
+### Custom Job Name
 
 ```bash
 python scripts/trigger_endpoint.py \
   --session-id 42 \
-  --auth-type none
+  --job-name "my_custom_job_name"
 ```
 
-### Override Batch Size
+### Custom Timeout
 
 ```bash
 python scripts/trigger_endpoint.py \
   --session-id 42 \
-  --job-config config_files/job_config.json \
-  --batch-size 1000
+  --timeout 60
 ```
 
 ## Configuration Priority
 
-The script uses this priority order for configuration:
+The script uses this priority order for all settings:
 
 1. **CLI flags** (highest priority)
-2. **Environment variables**
-3. **Job config file**
-4. **Defaults** (lowest priority)
+2. **Environment variables** (.env file)
+3. **Hardcoded defaults** (lowest priority)
 
-### Example
+### Examples
 
 ```bash
 # API key priority:
 # 1. --api-key flag
 # 2. MADXXX_API_KEY env var
-# 3. job_config.json api_keys.madxxx_api_key (NOT RECOMMENDED)
+# (required - no default)
 
 # Endpoint URL priority:
 # 1. --endpoint-url flag
 # 2. MADXXX_API_URL env var
-# 3. job_config.json endpoints.default
+# (required - no default)
+
+# Function name priority:
+# 1. --function-name flag
+# 2. MADXXX_FUNCTION_NAME env var
+# 3. Default: "register_audiofiles"
+
+# Timeout priority:
+# 1. --timeout flag
+# 2. MADXXX_API_TIMEOUT env var
+# 3. Default: 30
 ```
 
-## Job Configuration File
+## Environment Variables Reference
 
-### Structure
-
-```json
-{
-  "api_keys": {
-    "auth_type": "bearer",
-    "aws_profiles": {
-      "default": "aws-eos",
-      "production": "aws-production"
-    }
-  },
-  "endpoints": {
-    "default": "https://api.example.com/register"
-  },
-  "default_settings": {
-    "batch_size": 500,
-    "batch_delay": 2,
-    "max_files": null,
-    "file_extensions": [".wav", ".mp3", ".flac"],
-    "aws_region": "eu-west-1",
-    "recursive": true
-  },
-  "job_templates": {
-    "audio_processing": {
-      "function_name": "register_audiofiles",
-      "module_name": "madxxx_workbench.audio.register_audio",
-      "sqs_queue": "madXXX_tasks_data_registration",
-      "sqs_region": "eu-west-1"
-    }
-  },
-  "logging": {
-    "database_enabled": true,
-    "log_level": "INFO",
-    "save_payload_samples": true
-  }
-}
-```
-
-### Parameters
-
-- **api_keys.auth_type**: Authentication method (bearer, apikey, none)
-- **endpoints.default**: Default endpoint URL
-- **default_settings**: Settings to include in request payload
-  - **batch_size**: Number of files to process per batch
-  - **batch_delay**: Delay between batches in seconds
-  - **file_extensions**: Supported file types
-- **job_templates**: Predefined job configurations
-  - **function_name**: Function to call on backend
-  - **module_name**: Module path
-  - **sqs_queue**: SQS queue name for async processing
-  - **sqs_region**: AWS region for SQS
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `MADXXX_API_KEY` | **Yes** | None | API key for authentication |
+| `MADXXX_API_URL` | **Yes** | None | MadXXX API endpoint URL |
+| `MADXXX_API_TIMEOUT` | No | 30 | Request timeout in seconds |
+| `MADXXX_FUNCTION_NAME` | No | register_audiofiles | Backend function to call |
+| `MADXXX_MODULE_NAME` | No | madxxx_workbench.audio.register_audio | Python module path |
+| `MADXXX_SQS_QUEUE` | No | madXXX_tasks_data_registration | SQS queue name |
+| `MADXXX_SQS_REGION` | No | eu-west-1 | AWS region for SQS |
 
 ## Request Payload
 
@@ -222,10 +181,10 @@ The script sends the correct MadXXX API payload format:
 ### Key Points
 
 - **`job.arguments`**: Must be a list of lists containing S3 paths in format `s3://bucket/key`
-- **`job.function_name`**: Backend function to call (from job_config.json)
-- **`job.module_name`**: Python module path (from job_config.json)
-- **`job.keywords`**: Custom parameters (optional)
-- **`job.name`**: Unique job name (auto-generated or custom)
+- **`job.function_name`**: Backend function to call (from MADXXX_FUNCTION_NAME env var or default)
+- **`job.module_name`**: Python module path (from MADXXX_MODULE_NAME env var or default)
+- **`job.keywords`**: Custom parameters (optional, currently empty)
+- **`job.name`**: Unique job name (auto-generated or custom via --job-name)
 - **`sqs_queue`**: SQS queue name for async processing
 - **`sqs_region`**: AWS region for SQS
 
@@ -233,7 +192,7 @@ The script sends the correct MadXXX API payload format:
 
 **1. Prefix Mode (default):**
 ```bash
-python scripts/trigger_endpoint.py --session-id 42 --job-config config_files/job_config.json
+python scripts/trigger_endpoint.py --session-id 42
 ```
 
 Sends only the S3 prefix - API will list all files:
@@ -248,7 +207,7 @@ Sends only the S3 prefix - API will list all files:
 
 **2. File List Mode (--list-files):**
 ```bash
-python scripts/trigger_endpoint.py --session-id 42 --list-files --job-config config_files/job_config.json
+python scripts/trigger_endpoint.py --session-id 42 --list-files
 ```
 
 Loads all uploaded files from database and sends complete list:
@@ -288,28 +247,26 @@ Example output:
 
 ```
 ==========================================================================================
-📡 TRIGGER ENDPOINT
+📡 TRIGGER MADXXX ENDPOINT
 ==========================================================================================
 📋 Session ID: 42
 📁 Bucket: my-bucket
 📂 Prefix: C1
-🌐 Endpoint: https://api.example.com/register
-🔐 Auth Type: bearer
-🔑 Using Bearer token authentication
-📋 Loaded job config: config_files/job_config.json
-📤 Sending request...
-📦 Payload: {
-  "session_id": 42,
-  "bucket_name": "my-bucket",
-  ...
-}
-✅ Endpoint triggered successfully
+📊 Files uploaded: 1,234
+🌐 Endpoint: https://your-api-endpoint.com/api/v1/madxxx_tasks/job
+📤 Sending request to MadXXX API...
+🔑 Using API key authentication
+📦 Job name: session_42_register_audiofiles
+📦 Function: register_audiofiles
+📦 Files/paths: 1
+✅ Endpoint triggered successfully!
 📥 Status Code: 200
 📥 Response: {
   "status": "success",
   "job_id": "abc-123",
-  "message": "Files queued for processing"
+  "message": "Job queued for processing"
 }
+🆔 Job ID: abc-123
 ```
 
 ## Error Handling
@@ -318,9 +275,15 @@ Example output:
 
 **No endpoint URL provided:**
 ```
-❌ No endpoint URL provided. Use --endpoint-url, MADXXX_API_URL env var, or job config
+❌ No endpoint URL provided. Set MADXXX_API_URL in .env or use --endpoint-url
 ```
 Solution: Set MADXXX_API_URL in .env or use --endpoint-url flag
+
+**No API key provided:**
+```
+❌ No API key provided. Set MADXXX_API_KEY in .env or use --api-key
+```
+Solution: Set MADXXX_API_KEY in .env or use --api-key flag
 
 **Session not found:**
 ```
@@ -383,14 +346,15 @@ The upload script supports --dry-run which won't trigger the endpoint but will s
 
 ## Security Best Practices
 
-1. ✅ **DO** store API keys in .env file
+1. ✅ **DO** store API keys and endpoint URLs in .env file
 2. ✅ **DO** add .env to .gitignore
 3. ✅ **DO** use environment variables in production
 4. ✅ **DO** use HTTPS endpoints only
-5. ❌ **DON'T** commit API keys to git
-6. ❌ **DON'T** store API keys in job_config.json
-7. ❌ **DON'T** share .env files
-8. ❌ **DON'T** use plain HTTP in production
+5. ✅ **DO** use .env.example with placeholder values for documentation
+6. ❌ **DON'T** commit API keys to git
+7. ❌ **DON'T** hardcode endpoint URLs in code
+8. ❌ **DON'T** share .env files
+9. ❌ **DON'T** use plain HTTP in production
 
 ## Troubleshooting
 

@@ -82,6 +82,7 @@ python scripts/master.py --config config_files/your_config.json
 - [Database Schema](doc/DATABASE_SCHEMA.md) - Database structure and queries
 - [Grafana Queries](doc/GRAFANA_QUERIES.md) - Monitoring dashboard queries
 - [Project Structure](doc/PROJECT_STRUCTURE.md) - File organization
+- [Security Best Practices](SECURITY.md) - Protecting secrets and sensitive data
 
 ## Project Structure
 

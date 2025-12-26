@@ -1,0 +1,20 @@
+# Copyright 2025 Omar Miranda
+# SPDX-License-Identifier: Apache-2.0
+
+# Development Environment Variables
+# Copy this file to terraform.tfvars and fill in your values
+
+# AWS Configuration
+aws_region = "us-east-1"
+
+# ECS Docker Images (REQUIRED - replace with your ECR repository URLs)
+frontend_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/data-uploader-frontend:dev"
+backend_image  = "123456789012.dkr.ecr.us-east-1.amazonaws.com/data-uploader-backend:dev"
+worker_image   = "123456789012.dkr.ecr.us-east-1.amazonaws.com/data-uploader-backend:dev"
+
+# Database Configuration
+db_name     = "uploader_dev"
+db_username = "uploader"
+
+# Redis Configuration (optional - set to true if testing CLI uploads)
+enable_redis = false

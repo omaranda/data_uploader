@@ -110,12 +110,6 @@ Found an error in the documentation? Want to improve it?
 3. Update the table of contents if needed
 4. Submit a pull request
 
-## 📧 Support
-
-- 🐛 Report documentation issues in the [Issue Tracker](https://github.com/your-org/data_uploader/issues)
-- 💬 Ask questions in [Discussions](https://github.com/your-org/data_uploader/discussions)
-- 📧 Contact the team at your-email@example.com
-
 ---
 
 **Last Updated:** December 26, 2025

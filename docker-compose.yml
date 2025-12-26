@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
     container_name: data_uploader_db
@@ -12,12 +13,155 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # Mount SQL scripts - executed in alphabetical order
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/01_init.sql
+      - ./sql/migrations/001_add_multitenancy.sql:/docker-entrypoint-initdb.d/02_migration.sql
+      - ./sql/seed_data.sql:/docker-entrypoint-initdb.d/03_seed_data.sql
+      - ./sql/demo_data.sql:/docker-entrypoint-initdb.d/04_demo_data.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U uploader -d data_uploader"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - app_network
+
+  # Redis for job queue (RQ)
+  redis:
+    image: redis:7-alpine
+    container_name: data_uploader_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: data_uploader_backend
+    env_file:
+      - .env
+    environment:
+      # Database
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: data_uploader
+      DB_USER: uploader
+      DB_PASSWORD: uploader_pass
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production-min-32-chars}
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      REFRESH_TOKEN_EXPIRE_DAYS: 7
+      # CORS
+      CORS_ORIGINS: '["http://localhost:3000","http://localhost:8080"]'
+      # AWS Credentials (from .env file)
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
+      AWS_DEFAULT_REGION: "${AWS_DEFAULT_REGION:-us-east-1}"
+    ports:
+      - "8000:8000"
+    volumes:
+      # File system access for uploads (read-only)
+      - /Volumes:/Volumes:ro
+      - ${HOME}:${HOME}:ro
+      # AWS credentials (read-only)
+      - ${HOME}/.aws:/root/.aws:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app_network
+    restart: unless-stopped
+
+  # RQ Worker for background jobs
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: data_uploader_worker
+    env_file:
+      - .env
+    environment:
+      # Database (same as backend)
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: data_uploader
+      DB_USER: uploader
+      DB_PASSWORD: uploader_pass
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      # AWS Credentials (from .env file)
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
+      AWS_DEFAULT_REGION: "${AWS_DEFAULT_REGION:-us-east-1}"
+      # macOS fork safety
+      OBJC_DISABLE_INITIALIZE_FORK_SAFETY: "YES"
+    volumes:
+      # Same volume mounts as backend for file access
+      - /Volumes:/Volumes:ro
+      - ${HOME}:${HOME}:ro
+      - ${HOME}/.aws:/root/.aws:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["rq", "worker", "uploads", "--url", "redis://redis:6379"]
+    networks:
+      - app_network
+    restart: unless-stopped
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: data_uploader_frontend
+    environment:
+      # API Configuration (client-side - browser)
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      # Internal API URL (server-side - Docker network)
+      API_URL: http://backend:8000
+      # NextAuth
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-this-nextauth-secret-min-32-chars}
+      AUTH_TRUST_HOST: "true"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})\""]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - app_network
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+  redis_data:
+
+networks:
+  app_network:
+    driver: bridge

@@ -54,3 +54,4 @@ logs/
 .cache/
 s3_cache/
 /.uploader_venv
+/frontend/node_modules

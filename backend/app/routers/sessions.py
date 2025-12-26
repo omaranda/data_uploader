@@ -1,3 +1,6 @@
+# Copyright 2025 Omar Miranda
+# SPDX-License-Identifier: Apache-2.0
+
 """Sessions router - CRUD operations for sync sessions."""
 
 from __future__ import annotations

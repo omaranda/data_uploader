@@ -1,3 +1,6 @@
+# Copyright 2025 Omar Miranda
+# SPDX-License-Identifier: Apache-2.0
+
 """Job queue service using Redis Queue (RQ)."""
 
 from __future__ import annotations

@@ -1,3 +1,6 @@
+# Copyright 2025 Omar Miranda
+# SPDX-License-Identifier: Apache-2.0
+
 #!/usr/bin/env python
 """Main upload script for uploading files to S3."""
 

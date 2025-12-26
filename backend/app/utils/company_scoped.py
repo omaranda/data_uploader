@@ -1,3 +1,6 @@
+# Copyright 2025 Omar Miranda
+# SPDX-License-Identifier: Apache-2.0
+
 """Utilities for company-scoped data access."""
 
 from __future__ import annotations

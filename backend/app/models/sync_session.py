@@ -1,3 +1,6 @@
+# Copyright 2025 Omar Miranda
+# SPDX-License-Identifier: Apache-2.0
+
 """SyncSession ORM model."""
 
 from datetime import datetime

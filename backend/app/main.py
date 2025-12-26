@@ -1,3 +1,6 @@
+# Copyright 2025 Omar Miranda
+# SPDX-License-Identifier: Apache-2.0
+
 """FastAPI application entry point."""
 
 from fastapi import FastAPI, Request, status

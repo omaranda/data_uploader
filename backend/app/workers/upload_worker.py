@@ -1,3 +1,6 @@
+# Copyright 2025 Omar Miranda
+# SPDX-License-Identifier: Apache-2.0
+
 """Upload worker - executes upload jobs as background tasks."""
 
 from __future__ import annotations

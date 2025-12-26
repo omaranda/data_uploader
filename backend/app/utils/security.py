@@ -1,3 +1,6 @@
+# Copyright 2025 Omar Miranda
+# SPDX-License-Identifier: Apache-2.0
+
 """Security utilities for password hashing and JWT token management."""
 
 from datetime import datetime, timedelta

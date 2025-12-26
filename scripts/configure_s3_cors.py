@@ -1,3 +1,6 @@
+# Copyright 2025 Omar Miranda
+# SPDX-License-Identifier: Apache-2.0
+
 #!/usr/bin/env python3
 """
 Configure CORS settings for S3 bucket to allow browser uploads.

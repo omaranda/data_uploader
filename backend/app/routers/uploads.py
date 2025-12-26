@@ -1,3 +1,6 @@
+# Copyright 2025 Omar Miranda
+# SPDX-License-Identifier: Apache-2.0
+
 """Uploads router - start and monitor background upload jobs."""
 
 from __future__ import annotations
